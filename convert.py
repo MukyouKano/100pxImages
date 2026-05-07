@@ -13,6 +13,10 @@ SIZE = 100
 RASTER_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 SVG_EXT = ".svg"
 
+GREEN = "\033[92m"
+RED   = "\033[91m"
+RESET = "\033[0m"
+
 try:
     import cairosvg
     _HAS_CAIROSVG = True
@@ -21,18 +25,31 @@ except ImportError:
 
 
 def select_from_list(prompt: str, options: list) -> str:
+    import msvcrt
+    idx = 0
+    n = len(options)
+
     print(prompt, flush=True)
-    for i, opt in enumerate(options, 1):
-        print(f"  {i}: {opt}", flush=True)
+    for i, opt in enumerate(options):
+        print(("  > " if i == idx else "    ") + opt, flush=True)
+
     while True:
-        try:
-            raw = input("> ").strip()
-        except EOFError:
-            print("\n[ERROR] 対話的ターミナルが必要です。PowerShell/コマンドプロンプトから直接実行してください。", flush=True)
-            sys.exit(1)
-        if raw.isdigit() and 1 <= int(raw) <= len(options):
-            return options[int(raw) - 1]
-        print(f"  1〜{len(options)} を入力してください", flush=True)
+        key = msvcrt.getwch()
+        if key in ("\x00", "\xe0"):
+            key2 = msvcrt.getwch()
+            if key2 == "H":
+                idx = (idx - 1) % n
+            elif key2 == "P":
+                idx = (idx + 1) % n
+        elif key == "\r":
+            print(flush=True)
+            return options[idx]
+        else:
+            continue
+
+        print(f"\033[{n}A", end="", flush=True)
+        for i, opt in enumerate(options):
+            print("\r\033[2K" + ("  > " if i == idx else "    ") + opt, flush=True)
 
 
 def fit_and_center(img: Image.Image) -> Image.Image:
@@ -64,7 +81,7 @@ def save_image(img: Image.Image, stem: str, fmt: str, out_dir: Path) -> Path:
     if fmt == "webp":
         img.save(out_path, "WEBP", lossless=True)
     else:
-        img.save(out_path, "PNG")
+        img.save(out_path, "PNG", optimize=True)
     return out_path
 
 
@@ -73,6 +90,12 @@ def main() -> None:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     if hasattr(sys.stderr, "reconfigure"):
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+    if sys.platform == "win32":
+        import ctypes
+        ctypes.windll.kernel32.SetConsoleMode(
+            ctypes.windll.kernel32.GetStdHandle(-11), 7
+        )
 
     dirs = sorted(d for d in BASE_DIR.iterdir() if d.is_dir() and not d.name.startswith("."))
     if not dirs:
@@ -91,19 +114,27 @@ def main() -> None:
         ext = src.suffix.lower()
         try:
             if ext in RASTER_EXTS:
+                src_size = src.stat().st_size
                 result = process_raster(src)
             elif ext == SVG_EXT:
                 if not _HAS_CAIROSVG:
                     print(f"  SKIP  {src.name}  (cairosvg not installed)")
                     skipped += 1
                     continue
+                src_size = src.stat().st_size
                 result = process_svg(src)
             else:
                 skipped += 1
                 continue
 
             out = save_image(result, src.stem, fmt, out_dir)
-            print(f"  OK    {src.name} → {out.name}")
+            out_size = out.stat().st_size
+
+            src_kb = src_size / 1024
+            out_kb = out_size / 1024
+            color = GREEN if out_size <= src_size else RED
+            size_str = f"{src_kb:.2f}KB → {color}{out_kb:.2f}KB{RESET}"
+            print(f"  OK    {src.name} → {out.name}  ({size_str})")
             converted += 1
         except Exception as exc:
             print(f"  ERROR {src.name}: {exc}", file=sys.stderr)
