@@ -1,0 +1,12 @@
+# すべて無視
+*
+*/*
+
+# 必要なファイルだけ許可
+!convert.py
+!requirements.txt
+!readme.md
+!.gitignore
+!.OutPut/
+.OutPut/*
+!.OutPut/.gitkeep
