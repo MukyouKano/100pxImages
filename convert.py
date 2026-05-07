@@ -23,6 +23,14 @@ try:
 except ImportError:
     _HAS_CAIROSVG = False
 
+try:
+    import oxipng
+    _HAS_OXIPNG = True
+except ImportError:
+    _HAS_OXIPNG = False
+    print("Warning: pyoxipng not installed — PNG will use Pillow optimize=True only.", file=sys.stderr)
+    print("         Install: pip install -r requirements.txt", file=sys.stderr)
+
 
 def select_from_list(prompt: str, options: list) -> str:
     import msvcrt
@@ -82,6 +90,8 @@ def save_image(img: Image.Image, stem: str, fmt: str, out_dir: Path) -> Path:
         img.save(out_path, "WEBP", lossless=True)
     else:
         img.save(out_path, "PNG", optimize=True)
+        if _HAS_OXIPNG:
+            oxipng.optimize(str(out_path), level=4)
     return out_path
 
 
